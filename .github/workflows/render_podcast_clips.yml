@@ -40,10 +40,17 @@ jobs:
         with:
           deno-version: v2.x
 
-      - name: Install FFmpeg & yt-dlp
+      - name: Start PO Token Provider (Docker Container)
+        run: |
+          echo "Launching automated Proof-of-Origin (PO) Token provider container..."
+          docker run -d --name bgutil-provider -p 4416:4416 --init brainicism/bgutil-ytdlp-pot-provider
+          sleep 6
+          docker ps
+
+      - name: Install FFmpeg & yt-dlp with PO Token Plugin
         run: |
           sudo apt-get update && sudo apt-get install -y ffmpeg
-          pip install -U yt-dlp
+          pip install -U yt-dlp bgutil-ytdlp-pot-provider
 
       - name: Extract Video Segment (Cloud Download)
         id: download_segment
@@ -61,9 +68,9 @@ jobs:
             echo "Using YouTube authenticated cookies..."
           fi
 
-          echo "Downloading exact section from $START to $END seconds..."
-          # Download using cookies and versatile format selector
+          echo "Downloading exact section from $START to $END seconds using PO Token provider..."
           yt-dlp --download-sections "*$START-$END" \
+            --extractor-args "youtubepot-bgutilhttp:base_url=http://localhost:4416" \
             $COOKIE_ARGS \
             -f "bv*+ba/b" \
             --force-keyframes-at-cuts \
