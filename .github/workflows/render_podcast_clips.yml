@@ -62,11 +62,10 @@ jobs:
           fi
 
           echo "Downloading exact section from $START to $END seconds..."
-          # Use android player client + Deno runtime to bypass bot challenges
+          # Download using cookies and versatile format selector
           yt-dlp --download-sections "*$START-$END" \
-            --extractor-args "youtube:player_client=android,web" \
             $COOKIE_ARGS \
-            -f "bestvideo[height<=1080]+bestaudio/best[height<=1080]" \
+            -f "bv*+ba/b" \
             --force-keyframes-at-cuts \
             -o "raw_clip.%(ext)s" \
             "$URL"
