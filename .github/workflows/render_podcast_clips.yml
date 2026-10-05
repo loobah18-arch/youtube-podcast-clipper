@@ -35,21 +35,37 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Setup Deno (JS runtime for yt-dlp EJS deciphering)
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
       - name: Install FFmpeg & yt-dlp
         run: |
           sudo apt-get update && sudo apt-get install -y ffmpeg
-          pip install yt-dlp
+          pip install -U yt-dlp
 
       - name: Extract Video Segment (Cloud Download)
         id: download_segment
+        env:
+          YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
         run: |
           START="${{ inputs.start_time }}"
           END="${{ inputs.end_time }}"
           URL="${{ inputs.video_url }}"
           
+          COOKIE_ARGS=""
+          if [ -n "$YOUTUBE_COOKIES" ]; then
+            echo "$YOUTUBE_COOKIES" > cookies.txt
+            COOKIE_ARGS="--cookies cookies.txt"
+            echo "Using YouTube authenticated cookies..."
+          fi
+
           echo "Downloading exact section from $START to $END seconds..."
-          # yt-dlp precision section download avoids pulling entire multi-hour podcast
+          # Use android player client + Deno runtime to bypass bot challenges
           yt-dlp --download-sections "*$START-$END" \
+            --extractor-args "youtube:player_client=android,web" \
+            $COOKIE_ARGS \
             -f "bestvideo[height<=1080]+bestaudio/best[height<=1080]" \
             --force-keyframes-at-cuts \
             -o "raw_clip.%(ext)s" \
@@ -58,6 +74,7 @@ jobs:
           # Find downloaded clip
           RAW_FILE=$(ls raw_clip.* | head -n 1)
           echo "RAW_CLIP=$RAW_FILE" >> $GITHUB_ENV
+
 
       - name: Render 9:16 Vertical Short with FFmpeg
         run: |
