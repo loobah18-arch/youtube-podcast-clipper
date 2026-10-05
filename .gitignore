@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.vtt
+*.srt
+*.json
+!metadata_sample.json
+data/
+output/
+tmp/
+.env

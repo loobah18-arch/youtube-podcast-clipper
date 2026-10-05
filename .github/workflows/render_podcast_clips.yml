@@ -1,0 +1,85 @@
+name: Render Podcast Viral Clips (Cloud Runner)
+
+on:
+  workflow_dispatch:
+    inputs:
+      video_url:
+        description: 'YouTube Video URL'
+        required: true
+        type: string
+      start_time:
+        description: 'Start Time in seconds'
+        required: true
+        type: string
+      end_time:
+        description: 'End Time in seconds'
+        required: true
+        type: string
+      title:
+        description: 'Viral Clip Title'
+        required: false
+        default: 'Podcast Short'
+        type: string
+
+jobs:
+  render_clip:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install FFmpeg & yt-dlp
+        run: |
+          sudo apt-get update && sudo apt-get install -y ffmpeg
+          pip install yt-dlp
+
+      - name: Extract Video Segment (Cloud Download)
+        id: download_segment
+        run: |
+          START="${{ inputs.start_time }}"
+          END="${{ inputs.end_time }}"
+          URL="${{ inputs.video_url }}"
+          
+          echo "Downloading exact section from $START to $END seconds..."
+          # yt-dlp precision section download avoids pulling entire multi-hour podcast
+          yt-dlp --download-sections "*$START-$END" \
+            -f "bestvideo[height<=1080]+bestaudio/best[height<=1080]" \
+            --force-keyframes-at-cuts \
+            -o "raw_clip.%(ext)s" \
+            "$URL"
+          
+          # Find downloaded clip
+          RAW_FILE=$(ls raw_clip.* | head -n 1)
+          echo "RAW_CLIP=$RAW_FILE" >> $GITHUB_ENV
+
+      - name: Render 9:16 Vertical Short with FFmpeg
+        run: |
+          echo "Rendering 9:16 vertical short from $RAW_CLIP..."
+          
+          # High-retention vertical layout:
+          # Background: Scaled to fill 1080x1920, cropped and heavily blurred (boxblur=25:5)
+          # Foreground: Center-fitted 1080 width preserving original podcast framing
+          # Audio: loudnorm EBU R128 audio normalization (-14 LUFS)
+          ffmpeg -i "$RAW_CLIP" -filter_complex \
+            "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=25:5[bg]; \
+             [0:v]scale=1080:-1[fg]; \
+             [bg][fg]overlay=(W-w)/2:(H-h)/2[v]" \
+            -map "[v]" -map 0:a? \
+            -af "loudnorm=I=-14:LRA=7:tp=-1" \
+            -c:v libx264 -preset fast -crf 20 \
+            -c:a aac -b:a 192k \
+            "rendered_short.mp4"
+
+      - name: Upload Finished Clip Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: podcast-clip-${{ github.run_id }}
+          path: rendered_short.mp4
+          retention-days: 7
